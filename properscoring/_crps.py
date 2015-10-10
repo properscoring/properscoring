@@ -4,6 +4,8 @@ import pandas as pd
 from numba import guvectorize
 from scipy import special, integrate, stats
 
+from ._utils import move_axis_to_end, argsort_indices
+
 
 # The normalization constant for the univariate standard Gaussian pdf
 _normconst = 1.0 / np.sqrt(2.0 * np.pi)
@@ -239,16 +241,6 @@ def _crps_gufunc(observation, forecasts, weights, result):
     result[0] = integral
 
 
-def _argsort_indices(a, axis=-1):
-    """Like argsort, but returns an index suitable for sorting the
-    the original array even if that array is multidimensional
-    """
-    a = np.asarray(a)
-    ind = list(np.ix_(*[np.arange(d) for d in a.shape]))
-    ind[axis] = a.argsort(axis)
-    return tuple(ind)
-
-
 def crps_ensemble(observations, forecasts, weights=None, issorted=False,
                   axis=-1):
     """
@@ -318,19 +310,13 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
     """
     observations = np.asarray(observations)
     forecasts = np.asarray(forecasts)
+    if axis != -1:
+        forecasts = move_axis_to_end(forecasts, axis)
 
     if weights is not None:
-        weights = np.asarray(weights)
+        weights = move_axis_to_end(weights, axis)
         if weights.shape != forecasts.shape:
             raise ValueError('forecasts and weights must have the same shape')
-
-    if forecasts.ndim:
-        if axis < 0:
-            axis += forecasts.ndim
-        order = [n for n in range(forecasts.ndim) if n != axis] + [axis]
-        forecasts = np.transpose(forecasts, order)
-        if weights is not None:
-            weights = np.transpose(weights, order)
 
     if observations.shape not in [forecasts.shape, forecasts.shape[:-1]]:
         raise ValueError('observations and forecasts must have matching '
@@ -347,7 +333,7 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
         if weights is None:
             forecasts = np.sort(forecasts, axis=-1)
         else:
-            idx = _argsort_indices(forecasts, axis=-1)
+            idx = argsort_indices(forecasts, axis=-1)
             forecasts = forecasts[idx]
             weights = weights[idx]
 
