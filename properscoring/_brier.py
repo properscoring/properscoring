@@ -1,7 +1,15 @@
 import warnings
 
+import numba
 import numpy as np
-import pandas as pd
+
+
+@numba.jit(nopython=True)
+def _check_valid_binary_obs(values):
+    for val in values:
+        # val != val checks for NaN
+        if not (val == 0 or val == 1 or val != val):
+            raise ValueError('observations can only contain 0, 1, or NaN')
 
 
 def brier_score(observations, forecasts):
@@ -43,11 +51,7 @@ def brier_score(observations, forecasts):
         raise ValueError('forecasts must not be outside of the unit interval '
                          '[0, 1]')
     observations = np.asarray(observations)
-
-    for val in pd.unique(observations.ravel()):
-        if val not in [0, 1] and not np.isnan(val):
-            raise ValueError('observation %s not permitted; observations can '
-                             'only contain 0, 1 or NaN' % val)
+    _check_valid_binary_obs(observations.ravel(order='K'))
     return (forecasts - observations) ** 2
 
 

@@ -28,6 +28,6 @@ setup(name='properscoring',
       author='The Climate Corporation',
       author_email='shoyer@climate.com',
       url='https://github.com/TheClimateCorporation/properscoring',
-      install_requires=['numpy', 'scipy', 'numba', 'pandas'],
+      install_requires=['numpy', 'scipy', 'numba'],
       tests_require=['nose'],
       packages=find_packages())

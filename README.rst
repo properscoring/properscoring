@@ -19,7 +19,7 @@ Contents:
     These functions have been optimized and extensively tested.
 
 Install:
-    Requires NumPy, pandas, SciPy and Numba. Then: ``pip install properscoring``.
+    Requires NumPy, SciPy and Numba. Then: ``pip install properscoring``.
 
 History:
     This library was written by researchers at The Climate Corporation. The

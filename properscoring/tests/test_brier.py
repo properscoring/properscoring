@@ -1,8 +1,6 @@
-import functools
 import unittest
 
 import numpy as np
-from scipy import stats, special
 from numpy.testing import assert_allclose
 
 from properscoring import brier_score, threshold_decomposition
