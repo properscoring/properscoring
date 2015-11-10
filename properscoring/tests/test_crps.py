@@ -1,12 +1,14 @@
 import functools
 import unittest
+import warnings
 
 import numpy as np
 from scipy import stats, special
 from numpy.testing import assert_allclose
 
 from properscoring import crps_ensemble, crps_cdf, crps_gaussian
-from properscoring._crps import _argsort_indices
+
+from properscoring.tests.utils import suppress_warnings
 
 
 class TestDistributionBasedCRPS(unittest.TestCase):
@@ -113,30 +115,25 @@ def crps_alt(observations, forecasts):
         # sum over the last axis
         assert observations.shape == forecasts.shape[:-1]
         observations = observations[..., np.newaxis]
-        score = np.nanmean(np.abs(forecasts - observations), -1)
+        with suppress_warnings('Mean of empty slice'):
+            score = np.nanmean(abs(forecasts - observations), -1)
         # insert new axes along last and second to last forecast dimensions so
         # forecasts_diff expands with the array broadcasting
         forecasts_diff = (np.expand_dims(forecasts, -1)
                           - np.expand_dims(forecasts, -2))
-        score += -0.5 * np.nanmean(np.nanmean(np.abs(forecasts_diff), -1), -1)
+        with suppress_warnings('Mean of empty slice'):
+            score += -0.5 * np.nanmean(np.abs(forecasts_diff), axis=(-2, -1))
         return score
     elif observations.ndim == forecasts.ndim:
         # there is no 'realization' axis to sum over (this is a deterministic
         # forecast)
-        return np.abs(observations - forecasts)
+        return abs(observations - forecasts)
 
 
 class TestCRPS(unittest.TestCase):
     def setUp(self):
         self.obs = np.random.randn(10)
         self.forecasts = np.random.randn(10, 5)
-
-    def test_argsort_indices(self):
-        x = np.random.randn(5, 6, 7)
-        for axis in [0, 1, 2, -1]:
-            expected = np.sort(x, axis=axis)
-            idx = _argsort_indices(x, axis=axis)
-            assert_allclose(expected, x[idx])
 
     def test_validation(self):
         failures = [([0, 1], 0),
