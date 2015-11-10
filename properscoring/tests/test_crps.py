@@ -6,7 +6,7 @@ import numpy as np
 from scipy import stats, special
 from numpy.testing import assert_allclose
 
-from properscoring import crps_ensemble, crps_cdf, crps_gaussian
+from properscoring import crps_ensemble, crps_quadrature, crps_gaussian
 
 from properscoring.tests.utils import suppress_warnings
 
@@ -29,12 +29,12 @@ class TestDistributionBasedCRPS(unittest.TestCase):
         forecasts = z.reshape(-1, 1, 1) * self.sig + self.mu
         self.expected = crps_ensemble(self.obs, forecasts, axis=0)
 
-    def test_crps_cdf_consistent(self):
+    def test_crps_quadrature_consistent(self):
 
         def normcdf(*args, **kwdargs):
             return stats.norm(*args, **kwdargs).cdf
         dists = np.vectorize(normcdf)(loc=self.mu, scale=self.sig)
-        crps = crps_cdf(self.obs, dists,
+        crps = crps_quadrature(self.obs, dists,
                         xmin=self.mu - 5 * self.sig,
                         xmax=self.mu + 5 * self.sig)
         np.testing.assert_allclose(crps, self.expected, rtol=1e-4)
@@ -58,16 +58,16 @@ class TestDistributionBasedCRPS(unittest.TestCase):
         actual = crps_ensemble(self.obs, fcsts, weights)
         np.testing.assert_allclose(actual, self.expected, rtol=1e-4)
 
-    def test_crps_cdf_fails(self):
+    def test_crps_quadrature_fails(self):
         def normcdf(*args, **kwdargs):
             return stats.norm(*args, **kwdargs).cdf
         cdfs = np.vectorize(normcdf)(loc=self.mu, scale=self.sig)
-        valid_call = functools.partial(crps_cdf,
+        valid_call = functools.partial(crps_quadrature,
                                        self.obs, cdfs,
                                        xmin=self.mu - 5 * self.sig,
                                        xmax=self.mu + 5 * self.sig)
         # this should fail because we have redefined the xmin/xmax
-        # bounds to unreasonable values.  In order for the crps_cdf
+        # bounds to unreasonable values.  In order for the crps_quadrature
         # function to work it needs xmin/xmax values that bound the
         # range of the corresponding distribution.
         self.assertRaises(ValueError, lambda: valid_call(xmin=self.mu))

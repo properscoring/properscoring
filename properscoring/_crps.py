@@ -25,8 +25,8 @@ _normcdf = special.ndtr
 
 def crps_gaussian(x, mu, sig, grad=False):
     """
-    Computes the CRPS of an observation x relative to a normal
-    distribution with mean, mu, and standard deviation, sig.
+    Computes the CRPS of observations x relative to normally distributed
+    forecasts with mean, mu, and standard deviation, sig.
 
     CRPS(N(mu, sig^2); x)
 
@@ -77,7 +77,7 @@ def crps_gaussian(x, mu, sig, grad=False):
         return crps
 
 
-def _discover_bounds(cdf_or_dist, tol=1e-7):
+def _discover_bounds(cdf, tol=1e-7):
     """
     Uses scipy's general continuous distribution methods
     which compute the ppf from the cdf, then use the ppf
@@ -85,7 +85,7 @@ def _discover_bounds(cdf_or_dist, tol=1e-7):
     """
     class DistFromCDF(stats.distributions.rv_continuous):
         def cdf(self, x):
-            return cdf_or_dist(x)
+            return cdf(x)
     dist = DistFromCDF()
     # the ppf is the inverse cdf
     lower = dist.ppf(tol)
@@ -147,13 +147,13 @@ def _crps_cdf_single(x, cdf_or_dist, xmin=None, xmax=None, tol=1e-6):
 _crps_cdf = np.vectorize(_crps_cdf_single)
 
 
-def crps_cdf(x, cdf_or_dist, xmin=None, xmax=None, tol=1e-6):
+def crps_quadrature(x, cdf_or_dist, xmin=None, xmax=None, tol=1e-6):
     """
-    Compute the continuously ranked probability score (CPRS)
-    for a given forecast distribution (cdf) and observation (x).
-    This implementation allows the computation of CRPS for arbitrary
-    forecast distributions.  If gaussianity can be assumed the
-    gaussian_crps function is faster.
+    Compute the continuously ranked probability score (CPRS) for a given
+    forecast distribution (cdf) and observation (x) using numerical quadrature.
+
+    This implementation allows the computation of CRPS for arbitrary forecast
+    distributions. If gaussianity can be assumed ``crps_gaussian`` is faster.
 
     Parameters
     ----------
@@ -244,7 +244,8 @@ def _crps_gufunc(observation, forecasts, weights, result):
 def crps_ensemble(observations, forecasts, weights=None, issorted=False,
                   axis=-1):
     """
-    Calculate the continuous ranked probability score (CRPS)
+    Calculate the continuous ranked probability score (CRPS) for a set of
+    explicit forecast realizations.
 
     The CRPS compares the empirical distribution of an ensemble forecast
     to a scalar observation. Smaller scores indicate better skill.
@@ -260,8 +261,7 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
     Heaviside step function, where $x$ is a point estimate of the true
     observation (observational error is neglected).
 
-    This function approximates CRPS efficiently using the standard definition
-    of the empirical CDF:
+    This function calculates CRPS efficiently using the empirical CDF:
     http://en.wikipedia.org/wiki/Empirical_distribution_function
 
     The runtime of this function is O(N * E * log(E)) where N is the number of

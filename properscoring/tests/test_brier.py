@@ -4,12 +4,12 @@ import warnings
 import numpy as np
 from numpy.testing import assert_allclose
 
-from properscoring import brier_score, threshold_decomposition, crps_ensemble
+from properscoring import brier_score, threshold_brier_score, crps_ensemble
 
 from properscoring.tests.utils import suppress_warnings
 
 
-def threshold_decomposition_alt(observations, forecasts, thresholds):
+def threshold_brier_score_alt(observations, forecasts, thresholds):
     observations = np.asarray(observations)
     thresholds = np.asarray(thresholds)
     forecasts = np.asarray(forecasts)
@@ -52,13 +52,13 @@ class TestBrierScore(unittest.TestCase):
         brier_score(np.nan, np.nan)
 
 
-class TestThresholdDecomposition(unittest.TestCase):
+class TestThresholdBrierScore(unittest.TestCase):
     def test_examples(self):
         examples = [
+            (0, 0, 0, 0),
             (0, 0, [0], [0]),
             (0, 0, [-1, 0, 1], [0, 0, 0]),
             (0, [-1, 1], [-2, 0, 2], [0, 0.25, 0]),
-            (0, 0, [0], [0]),
             ([0, np.nan], [0, 0], [0], [[0], [np.nan]]),
             (np.nan, [-1, 1], [0, 1], [np.nan, np.nan]),
             (0, [-1, 1, np.nan], [-2, 0, 2], [0, 0.25, 0]),
@@ -66,7 +66,7 @@ class TestThresholdDecomposition(unittest.TestCase):
         ]
         for observations, forecasts, thresholds, expected in examples:
             assert_allclose(
-                threshold_decomposition(observations, forecasts, thresholds),
+                threshold_brier_score(observations, forecasts, thresholds),
                 expected)
 
     def test_crps_consistency(self):
@@ -75,7 +75,7 @@ class TestThresholdDecomposition(unittest.TestCase):
         forecasts = np.random.RandomState(456).rand(100, 100)
         thresholds = np.linspace(0, 1, num=10000)
 
-        td = threshold_decomposition(obs, forecasts, thresholds)
+        td = threshold_brier_score(obs, forecasts, thresholds)
         actual = td.sum(1) * (thresholds[1] - thresholds[0])
         desired = crps_ensemble(obs, forecasts)
         assert_allclose(actual, desired, atol=1e-4)
@@ -85,8 +85,8 @@ class TestThresholdDecomposition(unittest.TestCase):
         forecasts = np.random.RandomState(456).randn(100, 100)
         thresholds = np.linspace(-2, 2, num=10)
 
-        actual = threshold_decomposition(obs, forecasts, thresholds)
-        desired = threshold_decomposition(obs, forecasts, thresholds)
+        actual = threshold_brier_score(obs, forecasts, thresholds)
+        desired = threshold_brier_score(obs, forecasts, thresholds)
         assert_allclose(actual, desired, atol=1e-10)
 
         obs[np.random.RandomState(231).rand(100) < 0.2] = np.nan
@@ -94,14 +94,14 @@ class TestThresholdDecomposition(unittest.TestCase):
         forecasts[:, ::8] = np.nan
         forecasts[::8, :] = np.nan
 
-        actual = threshold_decomposition(obs, forecasts, thresholds)
-        desired = threshold_decomposition(obs, forecasts, thresholds)
+        actual = threshold_brier_score(obs, forecasts, thresholds)
+        desired = threshold_brier_score(obs, forecasts, thresholds)
         assert_allclose(actual, desired, atol=1e-10)
 
     def test_errors(self):
-        with self.assertRaisesRegexp(ValueError, 'must be 1D and sorted'):
-            threshold_decomposition(1, [0, 1, 2], [[1]])
-        with self.assertRaisesRegexp(ValueError, 'must be 1D and sorted'):
-            threshold_decomposition(1, [0, 1, 2], [1, 0.5])
+        with self.assertRaisesRegexp(ValueError, 'must be scalar or 1-dim'):
+            threshold_brier_score(1, [0, 1, 2], [[1]])
+        with self.assertRaisesRegexp(ValueError, 'must be sorted'):
+            threshold_brier_score(1, [0, 1, 2], [1, 0.5])
         with self.assertRaisesRegexp(ValueError, 'must have matching shapes'):
-            threshold_decomposition([1, 2], [0, 1, 2], [0.5])
+            threshold_brier_score([1, 2], [0, 1, 2], [0.5])
