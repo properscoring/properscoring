@@ -5,40 +5,8 @@ import numpy as np
 from numpy.testing import assert_allclose
 
 from properscoring import brier_score, threshold_brier_score, crps_ensemble
-
-from properscoring.tests.utils import suppress_warnings
-
-
-def threshold_brier_score_alt(observations, forecasts, thresholds):
-    observations = np.asarray(observations)
-    thresholds = np.asarray(thresholds)
-    forecasts = np.asarray(forecasts)
-
-    def exceedances(x):
-        # NaN safe calculation of threshold exceedances
-        # add an extra dimension to `x` and broadcast `thresholds` so that it
-        # varies along that new dimension
-        with suppress_warnings('invalid value encountered in greater'):
-            exceeds = (x[..., np.newaxis] >
-                       thresholds.reshape((1,) * x.ndim + (-1,))
-                       ).astype(float)
-        if x.ndim == 0 and np.isnan(x):
-            exceeds[:] = np.nan
-        else:
-            exceeds[np.where(np.isnan(x))] = np.nan
-        return exceeds
-
-    binary_obs = exceedances(observations)
-    if observations.shape == forecasts.shape:
-        prob_forecast = exceedances(forecasts)
-    elif observations.shape == forecasts.shape[:-1]:
-        # axis=-2 should be the 'realization' axis, after swapping that axes
-        # to the end of forecasts and inserting one extra axis
-        with suppress_warnings('Mean of empty slice'):
-            prob_forecast = np.nanmean(exceedances(forecasts), axis=-2)
-    else:
-        raise AssertionError
-    return brier_score(binary_obs, prob_forecast)
+from properscoring._brier import (_threshold_brier_score_vectorized,
+                                  _threshold_brier_score_core)
 
 
 class TestBrierScore(unittest.TestCase):
@@ -86,7 +54,7 @@ class TestThresholdBrierScore(unittest.TestCase):
         thresholds = np.linspace(-2, 2, num=10)
 
         actual = threshold_brier_score(obs, forecasts, thresholds)
-        desired = threshold_brier_score(obs, forecasts, thresholds)
+        desired = _threshold_brier_score_vectorized(obs, forecasts, thresholds)
         assert_allclose(actual, desired, atol=1e-10)
 
         obs[np.random.RandomState(231).rand(100) < 0.2] = np.nan
@@ -95,7 +63,7 @@ class TestThresholdBrierScore(unittest.TestCase):
         forecasts[::8, :] = np.nan
 
         actual = threshold_brier_score(obs, forecasts, thresholds)
-        desired = threshold_brier_score(obs, forecasts, thresholds)
+        desired = _threshold_brier_score_vectorized(obs, forecasts, thresholds)
         assert_allclose(actual, desired, atol=1e-10)
 
     def test_errors(self):
@@ -105,3 +73,14 @@ class TestThresholdBrierScore(unittest.TestCase):
             threshold_brier_score(1, [0, 1, 2], [1, 0.5])
         with self.assertRaisesRegexp(ValueError, 'must have matching shapes'):
             threshold_brier_score([1, 2], [0, 1, 2], [0.5])
+
+    def test_numba_is_used(self):
+        try:
+            import numba
+            has_numba = True
+        except ImportError:
+            has_numba = False
+
+        using_vectorized = (_threshold_brier_score_core is
+                            _threshold_brier_score_vectorized)
+        self.assertEqual(using_vectorized, not has_numba)

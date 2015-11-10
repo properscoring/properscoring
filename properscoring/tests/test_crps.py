@@ -7,8 +7,8 @@ from scipy import stats, special
 from numpy.testing import assert_allclose
 
 from properscoring import crps_ensemble, crps_quadrature, crps_gaussian
-
-from properscoring.tests.utils import suppress_warnings
+from properscoring._crps import (_crps_ensemble_vectorized,
+                                 _crps_ensemble_core)
 
 
 class TestDistributionBasedCRPS(unittest.TestCase):
@@ -87,49 +87,6 @@ class TestDistributionBasedCRPS(unittest.TestCase):
             self.assertLessEqual(optimize.check_grad(f, g, x), 1e-6)
 
 
-def crps_alt(observations, forecasts):
-    """
-    An alternative but simpler implementation of CRPS for testing purposes
-
-    This implementation is based on the identity:
-
-    .. math::
-        CRPS(F, x) = E_F|X - x| - 1/2 * E_F|X - X'|
-
-    where X and X' denote independent random variables drawn from the forecast
-    distribution F, and E_F denotes the expectation value under F.
-
-    Hence it has runtime O(n^2) instead of O(n log(n)) where n is the number of
-    ensemble members.
-
-    Reference
-    ---------
-    Tilmann Gneiting and Adrian E. Raftery. Strictly proper scoring rules,
-        prediction, and estimation, 2005. University of Washington Department of
-        Statistics Technical Report no. 463R.
-        https://www.stat.washington.edu/research/reports/2004/tr463R.pdf
-    """
-    observations = np.asarray(observations)
-    forecasts = np.asarray(forecasts)
-    if observations.ndim == forecasts.ndim - 1:
-        # sum over the last axis
-        assert observations.shape == forecasts.shape[:-1]
-        observations = observations[..., np.newaxis]
-        with suppress_warnings('Mean of empty slice'):
-            score = np.nanmean(abs(forecasts - observations), -1)
-        # insert new axes along last and second to last forecast dimensions so
-        # forecasts_diff expands with the array broadcasting
-        forecasts_diff = (np.expand_dims(forecasts, -1)
-                          - np.expand_dims(forecasts, -2))
-        with suppress_warnings('Mean of empty slice'):
-            score += -0.5 * np.nanmean(np.abs(forecasts_diff), axis=(-2, -1))
-        return score
-    elif observations.ndim == forecasts.ndim:
-        # there is no 'realization' axis to sum over (this is a deterministic
-        # forecast)
-        return abs(observations - forecasts)
-
-
 class TestCRPS(unittest.TestCase):
     def setUp(self):
         self.obs = np.random.randn(10)
@@ -176,13 +133,13 @@ class TestCRPS(unittest.TestCase):
             self.assertAlmostEqual(
                 crps_ensemble(x, ensemble), expected)
             self.assertAlmostEqual(
-                crps_alt(x, ensemble), expected)
+                _crps_ensemble_vectorized(x, ensemble), expected)
 
     def test_high_dimensional_consistency(self):
         obs = np.random.randn(10, 20)
         forecasts = np.random.randn(10, 20, 5)
         assert_allclose(crps_ensemble(obs, forecasts),
-                        crps_alt(obs, forecasts))
+                        _crps_ensemble_vectorized(obs, forecasts))
 
     def test_issorted(self):
         vec = np.random.random((10,))
@@ -247,7 +204,8 @@ class TestCRPS(unittest.TestCase):
             (0, np.nan),
             (0, [np.nan, np.nan]),
             (0, [1], [np.nan]),
-            (0, [1], [-1]),
+            (0, [np.nan], [1]),
+            (np.nan, [1], [1]),
         ]
         for args in examples:
             self.assertTrue(
@@ -264,7 +222,7 @@ class TestCRPS(unittest.TestCase):
         self.obs[rs.rand(*self.obs.shape) > 0.5] = np.nan
         assert_allclose(
             crps_ensemble(self.obs, self.forecasts),
-            crps_alt(self.obs, self.forecasts))
+            _crps_ensemble_vectorized(self.obs, self.forecasts))
 
     def test_nan_forecasts_consistency(self):
         rs = np.random.RandomState(123)
@@ -272,12 +230,12 @@ class TestCRPS(unittest.TestCase):
         self.forecasts[rs.rand(*self.obs.shape) > 0.5] = np.nan
         assert_allclose(
             crps_ensemble(self.obs, self.forecasts),
-            crps_alt(self.obs, self.forecasts))
+            _crps_ensemble_vectorized(self.obs, self.forecasts))
         # forecasts shaped like obs
         forecasts = self.forecasts[:, 0]
         assert_allclose(
             crps_ensemble(self.obs, forecasts),
-            crps_alt(self.obs, forecasts))
+            _crps_ensemble_vectorized(self.obs, forecasts))
 
     def test_crps_nans(self):
         vec = np.random.random((10,))
@@ -311,3 +269,13 @@ class TestCRPS(unittest.TestCase):
             computed = crps_ensemble(x + delta, vec)
             expected = np.abs(delta * 1.0 ** 2)
             self.assertAlmostEqual(computed, expected)
+
+    def test_numba_is_used(self):
+        try:
+            import numba
+            has_numba = True
+        except ImportError:
+            has_numba = False
+
+        using_vectorized = _crps_ensemble_core is _crps_ensemble_vectorized
+        self.assertEqual(using_vectorized, not has_numba)

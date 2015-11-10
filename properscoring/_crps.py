@@ -1,10 +1,8 @@
 import numpy as np
-import pandas as pd
 
-from numba import guvectorize
 from scipy import special, integrate, stats
 
-from ._utils import move_axis_to_end, argsort_indices
+from ._utils import move_axis_to_end, argsort_indices, suppress_warnings
 
 
 # The normalization constant for the univariate standard Gaussian pdf
@@ -183,62 +181,61 @@ def crps_quadrature(x, cdf_or_dist, xmin=None, xmax=None, tol=1e-6):
     return _crps_cdf(x, cdf_or_dist, xmin, xmax, tol)
 
 
-@guvectorize(["void(float64[:], float64[:], float64[:], float64[:])"],
-             "(),(n),(n)->()", nopython=True)
-def _crps_gufunc(observation, forecasts, weights, result):
-    # beware: forecasts are assumed sorted in NumPy's sort order
+def _crps_ensemble_vectorized(observations, forecasts, weights=1):
+    """
+    An alternative but simpler implementation of CRPS for testing purposes
 
-    # we index the 0th element to get the scalar value from this 0d array:
-    # http://numba.pydata.org/numba-doc/0.18.2/user/vectorize.html#the-guvectorize-decorator
-    obs = observation[0]
+    This implementation is based on the identity:
 
-    if np.isnan(obs):
-        result[0] = np.nan
-        return
+    .. math::
+        CRPS(F, x) = E_F|X - x| - 1/2 * E_F|X - X'|
 
-    total_weight = 0.0
-    for n, weight in enumerate(weights):
-        if np.isnan(forecasts[n]):
-            # NumPy sorts NaN to the end
-            break
-        if not weight >= 0:
-            # this catches NaN weights
-            result[0] = np.nan
-            return
-        total_weight += weight
+    where X and X' denote independent random variables drawn from the forecast
+    distribution F, and E_F denotes the expectation value under F.
 
-    obs_cdf = 0
-    forecast_cdf = 0
-    prev_forecast = 0
-    integral = 0
+    Hence it has runtime O(n^2) instead of O(n log(n)) where n is the number of
+    ensemble members.
 
-    for n, forecast in enumerate(forecasts):
-        if np.isnan(forecast):
-            # NumPy sorts NaN to the end
-            if n == 0:
-                integral = np.nan
-            # reset for the sake of the conditional below
-            forecast = prev_forecast
-            break
+    Reference
+    ---------
+    Tilmann Gneiting and Adrian E. Raftery. Strictly proper scoring rules,
+        prediction, and estimation, 2005. University of Washington Department of
+        Statistics Technical Report no. 463R.
+        https://www.stat.washington.edu/research/reports/2004/tr463R.pdf
+    """
+    observations = np.asarray(observations)
+    forecasts = np.asarray(forecasts)
+    weights = np.asarray(weights)
+    if weights.ndim > 0:
+        weights = np.where(~np.isnan(forecasts), weights, np.nan)
+        weights = weights / np.nanmean(weights, axis=-1, keepdims=True)
 
-        if obs_cdf == 0 and obs < forecast:
-            integral += (obs - prev_forecast) * forecast_cdf ** 2
-            integral += (forecast - obs) * (forecast_cdf - 1) ** 2
-            obs_cdf = 1
-        else:
-            integral += ((forecast - prev_forecast)
-                         * (forecast_cdf - obs_cdf) ** 2)
+    if observations.ndim == forecasts.ndim - 1:
+        # sum over the last axis
+        assert observations.shape == forecasts.shape[:-1]
+        observations = observations[..., np.newaxis]
+        with suppress_warnings('Mean of empty slice'):
+            score = np.nanmean(weights * abs(forecasts - observations), -1)
+        # insert new axes along last and second to last forecast dimensions so
+        # forecasts_diff expands with the array broadcasting
+        forecasts_diff = (np.expand_dims(forecasts, -1) -
+                          np.expand_dims(forecasts, -2))
+        weights_matrix = (np.expand_dims(weights, -1) *
+                          np.expand_dims(weights, -2))
+        with suppress_warnings('Mean of empty slice'):
+            score += -0.5 * np.nanmean(weights_matrix * abs(forecasts_diff),
+                                       axis=(-2, -1))
+        return score
+    elif observations.ndim == forecasts.ndim:
+        # there is no 'realization' axis to sum over (this is a deterministic
+        # forecast)
+        return abs(observations - forecasts)
 
-        forecast_cdf += weights[n] / total_weight
-        prev_forecast = forecast
 
-    if obs_cdf == 0:
-        # forecast can be undefined here if the loop body is never executed
-        # (because forecasts have size 0), but don't worry about that because
-        # we want to raise an error in that case, anyways
-        integral += obs - forecast
-
-    result[0] = integral
+try:
+    from ._gufuncs import _crps_ensemble_gufunc as _crps_ensemble_core
+except ImportError:
+    _crps_ensemble_core = _crps_ensemble_vectorized
 
 
 def crps_ensemble(observations, forecasts, weights=None, issorted=False,
@@ -264,8 +261,12 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
     This function calculates CRPS efficiently using the empirical CDF:
     http://en.wikipedia.org/wiki/Empirical_distribution_function
 
-    The runtime of this function is O(N * E * log(E)) where N is the number of
-    observations and E is the size of the forecast ensemble.
+    The Numba accelerated version of this function requires time
+    O(N * E * log(E)) and space O(N * E) where N is the number of observations
+    and E is the size of the forecast ensemble.
+
+    The non-Numba accelerated version much slower for large ensembles: it
+    requires both time and space O(N * E ** 2).
 
     Parameters
     ----------
@@ -340,4 +341,4 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
     if weights is None:
         weights = np.ones_like(forecasts)
 
-    return _crps_gufunc(observations, forecasts, weights)
+    return _crps_ensemble_core(observations, forecasts, weights)
