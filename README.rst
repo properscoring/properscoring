@@ -13,12 +13,12 @@ evaluating weather forecasts.
 .. _Proper scoring rules: https://www.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf
 
 Install:
-    Requires NumPy (1.8 or later) and SciPy (any recent version should be
-    fine). Numba is optional, but highly encouraged: it enables significant
-    speedups (~20x faster) with ``crps_ensemble`` and
-    ``threshold_brier_score``.
+    ``properscoring`` runs on both Python 2 and 3. It requires NumPy (1.8 or
+    later) and SciPy (any recent version should be fine). Numba is optional,
+    but highly encouraged: it enables significant speedups (e.g., 20x faster)
+    for ``crps_ensemble`` and ``threshold_brier_score``.
 
-    Use pip: ``pip install properscoring``.
+    To install, use pip: ``pip install properscoring``.
 
 Example: five ways to calculate CRPS:
     This library focuses on the closely related
