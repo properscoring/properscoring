@@ -83,9 +83,10 @@ Example: five ways to calculate CRPS:
     forecast is to always predict 0::
 
         >>> obs = [-2, -1, 0, 1, 2]
-        >>> baseline_score = ps.crps_ensemble(obs, np.zeros(5)).mean()
+        >>> baseline_score = ps.crps_ensemble(obs, [0, 0, 0, 0, 0]).mean()
         >>> forecast_score = ps.crps_gaussian(obs, mu=0, sig=1).mean()
         >>> skill = (baseline_score - forecast_score) / baseline_score
+        >>> skill
         0.27597311068630859
 
     A standard normal distribution was 28% better at predicting these five
