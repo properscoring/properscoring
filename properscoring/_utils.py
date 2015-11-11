@@ -1,3 +1,6 @@
+import warnings
+import contextlib
+
 import numpy as np
 
 
@@ -14,3 +17,10 @@ def argsort_indices(a, axis=-1):
     ind = list(np.ix_(*[np.arange(d) for d in a.shape]))
     ind[axis] = a.argsort(axis)
     return tuple(ind)
+
+
+@contextlib.contextmanager
+def suppress_warnings(msg=None):
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', msg)
+        yield

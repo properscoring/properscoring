@@ -1,15 +1,6 @@
 import numpy as np
-from numba import jit, guvectorize
 
-from ._utils import move_axis_to_end
-
-
-@jit(nopython=True)
-def _check_valid_binary_obs(values):
-    for val in values:
-        # val != val checks for NaN
-        if not (val == 0 or val == 1 or val != val):
-            raise ValueError('observations can only contain 0, 1, or NaN')
+from ._utils import move_axis_to_end, suppress_warnings
 
 
 def brier_score(observations, forecasts):
@@ -26,8 +17,8 @@ def brier_score(observations, forecasts):
     Parameters
     ----------
     observations, forecasts : array_like
-        Broadcast compatible arrays of forecasts (probabilities) and
-        observations (0, 1 or NaN).
+        Broadcast compatible arrays of forecasts (probabilities between 0 and
+        1) and observations (0, 1 or NaN).
 
     Returns
     -------
@@ -51,56 +42,58 @@ def brier_score(observations, forecasts):
         raise ValueError('forecasts must not be outside of the unit interval '
                          '[0, 1]')
     observations = np.asarray(observations)
-    _check_valid_binary_obs(observations.ravel(order='K'))
+    valid_obs = observations[~np.isnan(observations)]
+    if not set(np.unique(valid_obs)) <= {0, 1}:
+        raise ValueError('observations can only contain 0, 1, or NaN')
     return (forecasts - observations) ** 2
 
 
-@guvectorize(["void(float64[:], float64[:], float64[:], float64[:])"],
-             "(),(n),(m)->(m)", nopython=True)
-def _threshold_decomp_gufunc(observation, forecasts, thresholds, result):
-    # both forecasts and thresholds are assumed sorted in NumPy's sort order
-    obs = observation[0]
+def _threshold_brier_score_vectorized(observations, forecasts, thresholds):
+    observations = np.asarray(observations)
+    thresholds = np.asarray(thresholds)
+    forecasts = np.asarray(forecasts)
 
-    n_thresholds = len(thresholds)
-    n_forecasts = len(forecasts)
-    while np.isnan(forecasts[n_forecasts - 1]) and n_forecasts > 0:
-        n_forecasts -= 1
-
-    if np.isnan(obs) or n_forecasts == 0:
-        result[:] = np.nan
-        return
-
-    inv_n_forecasts = 1.0 / n_forecasts
-
-    i = 0
-    j = 0
-    while i < n_forecasts and j < n_thresholds:
-        forecast = forecasts[i]
-        threshold = thresholds[j]
-
-        if forecast <= threshold:
-            i += 1
+    def exceedances(x):
+        # NaN safe calculation of threshold exceedances
+        # add an extra dimension to `x` and broadcast `thresholds` so that it
+        # varies along that new dimension
+        with suppress_warnings('invalid value encountered in greater'):
+            exceeds = (x[..., np.newaxis] >
+                       thresholds.reshape((1,) * x.ndim + (-1,))
+                       ).astype(float)
+        if x.ndim == 0 and np.isnan(x):
+            exceeds[:] = np.nan
         else:
-            probability = i * inv_n_forecasts
-            binary_obs = obs <= threshold
-            result[j] = (probability - binary_obs) ** 2
-            j += 1
+            exceeds[np.where(np.isnan(x))] = np.nan
+        return exceeds
 
-    for k in range(j, n_thresholds):
-        threshold = thresholds[k]
-        binary_obs = obs <= threshold
-        # probability is always 1, so we can skip the square
-        result[k] = 1 - binary_obs
+    binary_obs = exceedances(observations)
+    if observations.shape == forecasts.shape:
+        prob_forecast = exceedances(forecasts)
+    elif observations.shape == forecasts.shape[:-1]:
+        # axis=-2 should be the 'realization' axis, after swapping that axes
+        # to the end of forecasts and inserting one extra axis
+        with suppress_warnings('Mean of empty slice'):
+            prob_forecast = np.nanmean(exceedances(forecasts), axis=-2)
+    else:
+        raise AssertionError
+    return brier_score(binary_obs, prob_forecast)
 
 
-def threshold_decomposition(observations, forecasts, thresholds,
-                            issorted=False, axis=-1):
+try:
+    from ._gufuncs import _threshold_brier_score_gufunc as \
+        _threshold_brier_score_core
+except ImportError:
+    _threshold_brier_score_core = _threshold_brier_score_vectorized
+
+
+def threshold_brier_score(observations, forecasts, threshold, issorted=False,
+                          axis=-1):
     """
-    Threshold decomposition of the continuous ranked probability score (CRPS)
+    Calculate the Brier scores of an ensemble for exceeding given thresholds.
 
-    This function calculates the Brier score for exceedance at each given
-    threshold (the values z in the equation below). The resulting Brier scores
-    can thus be summed along the last axis to calculate CRPS, as
+    According to the threshold decomposition of CRPS, the resulting Brier
+    scores can thus be summed along the last axis to calculate CRPS, as
 
     .. math::
         CRPS(F, x) = \int_z BS(F(z), H(z - x)) dz
@@ -115,20 +108,25 @@ def threshold_decomposition(observations, forecasts, thresholds,
     decomposition itself provides a useful summary of model quality as a
     function of measurement values.
 
+    The Numba accelerated version of this function is much faster for
+    calculating many thresholds simultaneously: it runs in time O(N * (E + T)),
+    where N is the number of observations, E is the ensemble size and T is the
+    number of thresholds.
+
+    The non-Numba accelerated version requires time and space O(N * E * T).
+
     Parameters
     ----------
-    observations : float or np.ndarray
+    observations : float or array_like
         Observations float or array. Missing values (NaN) are given scores of
         NaN.
-    forecasts : float or np.ndarray
+    forecasts : float or array_like
         Array of forecasts ensemble members, of the same shape as observations
-        except for the axis along which the threshold decomposition is
-        calculated (which should be the axis corresponding to the ensemble). If
-        forecasts has the same shape as observations, the forecasts are treated
-        as deterministic. Missing values (NaN) are ignored.
-    thresholds : array_like
-        Threshold values at which to calculate the exceedence Brier score which
-        contributes to CRPS.
+        except for the extra axis corresponding to the ensemble. If forecasts
+        has the same shape as observations, the forecasts are treated as
+        deterministic. Missing values (NaN) are ignored.
+    threshold : scalar or 1d array_like
+        Threshold value(s) at which to calculate exceedence Brier scores.
     issorted : bool, optional
         Optimization flag to indicate that the elements of `ensemble` are
         already sorted along `axis`.
@@ -139,10 +137,10 @@ def threshold_decomposition(observations, forecasts, thresholds,
     Returns
     -------
     out : np.ndarray
-        Threshold decomposition for each ensemble forecast against the
-        observations. The threshold decomposition will have the same shape as
-        observations, except for an additional final dimension, which
-        corresponds to the different threshold values.
+        Brier scores at each thresold for each ensemble forecast against the
+        observations. If ``threshold`` is a scalar, the result will have the
+        same shape as observations. Otherwise, it will have an additional final
+        dimension corresponding to the threshold levels.
 
     References
     ----------
@@ -152,11 +150,12 @@ def threshold_decomposition(observations, forecasts, thresholds,
 
     See also
     --------
-    crps, brier_score
+    crps_ensemble, brier_score
     """
     observations = np.asarray(observations)
-    thresholds = np.asarray(thresholds)
+    threshold = np.asarray(threshold)
     forecasts = np.asarray(forecasts)
+
     if axis != -1:
         forecasts = move_axis_to_end(forecasts, axis)
 
@@ -168,11 +167,21 @@ def threshold_decomposition(observations, forecasts, thresholds,
                          'shapes or matching shapes except along `axis=%s`'
                          % axis)
 
-    if thresholds.ndim > 1 or not (np.sort(thresholds) == thresholds).all():
-        raise ValueError('thresholds must be 1D and sorted')
-    thresholds = thresholds.reshape((1,) * observations.ndim + (-1,))
+    scalar_threshold = threshold.ndim == 0
+
+    if threshold.ndim > 1:
+        raise ValueError('threshold must be scalar or 1-dimensional')
+    if threshold.ndim == 1 and not (np.sort(threshold) == threshold).all():
+        raise ValueError('1D thresholds must be sorted')
+
+    threshold = threshold.reshape((1,) * observations.ndim + (-1,))
 
     if not issorted:
         forecasts = np.sort(forecasts, axis=-1)
 
-    return _threshold_decomp_gufunc(observations, forecasts, thresholds)
+    result = _threshold_brier_score_core(observations, forecasts, threshold)
+
+    if scalar_threshold:
+        result = result.squeeze(axis=-1)
+
+    return result
