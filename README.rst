@@ -20,7 +20,7 @@ Contents:
 
       - for an ensemble forecast: ``crps_ensemble``
       - for a Gaussian distribution: ``crps_gaussian``
-      - for an arbitrary cummulative distribution function: ``crps_quadrature``
+      - for an arbitrary cumulative distribution function: ``crps_quadrature``
 
     * Brier score:
 
