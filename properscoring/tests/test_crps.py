@@ -47,7 +47,7 @@ class TestDistributionBasedCRPS(unittest.TestCase):
             return stats.norm(*args, **kwdargs).pdf
         pdfs = np.vectorize(normpdf)(loc=self.mu, scale=self.sig)
 
-        fcsts = np.linspace(-4., 4., 5001)
+        fcsts = np.linspace(-4., 4., 500)
         fcsts = (self.mu[..., np.newaxis] + self.sig[..., np.newaxis]
                  * fcsts[np.newaxis, np.newaxis, :])
 
