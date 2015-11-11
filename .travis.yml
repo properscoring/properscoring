@@ -6,7 +6,7 @@ notifications:
 matrix:
   include:
   - python: 2.7
-    env: DEPS="numpy scipy"
+    env: DEPS="numpy=1.8 scipy"
   - python: 2.7
     env: DEPS="numpy scipy numba"
   - python: 3.4

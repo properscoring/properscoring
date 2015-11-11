@@ -33,8 +33,11 @@ Contents:
     These functions have been optimized and extensively tested.
 
 Install:
-    Requires NumPy and SciPy. Numba is optional, but highly encouraged: we use it
-    for significant speedups with ``crps_ensemble`` and ``threshold_brier_score``.
+    Requires NumPy (1.8 or later) and SciPy (any recent version should be
+    fine). Numba is optional, but highly encouraged: it enables significant
+    speedups (~20x faster) with ``crps_ensemble`` and
+    ``threshold_brier_score``.
+
     To install, use pip: ``pip install properscoring``.
 
 Guidelines:
