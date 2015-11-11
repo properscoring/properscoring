@@ -6,8 +6,15 @@ notifications:
 matrix:
   include:
   - python: 2.7
+    env: DEPS="numpy scipy"
+  - python: 2.7
+    env: DEPS="numpy scipy numba"
   - python: 3.4
+    env: DEPS="numpy scipy"
   - python: 3.5
+    env: DEPS="numpy scipy"
+  - python: 3.5
+    env: DEPS="numpy scipy numba"
 
 before_install:
   - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
@@ -23,9 +30,9 @@ before_install:
   - conda info -a
 
 install:
-  - conda create --yes -n test_env python=$TRAVIS_PYTHON_VERSION pip nose numpy scipy pandas numba
+  - conda create --yes -n test_env python=$TRAVIS_PYTHON_VERSION pytest $DEPS
   - source activate test_env
   - python setup.py install
 
 script:
-  - nosetests -v
+  - py.test

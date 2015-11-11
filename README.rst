@@ -1,6 +1,9 @@
 properscoring
 =============
 
+.. image:: https://travis-ci.org/TheClimateCorporation/properscoring.svg?branch=master
+    :target: https://travis-ci.org/TheClimateCorporation/properscoring
+
 `Proper scoring rules`_ for evaluating probabilistic forecasts in Python.
 Evaluation methods that are "strictly proper" cannot be artificially improved
 through hedging, which makes them fair methods for accessing the accuracy of
@@ -9,13 +12,13 @@ evaluating weather forecasts.
 
 .. _Proper scoring rules: https://www.stat.washington.edu/raftery/Research/PDF/Gneiting2007jasa.pdf
 
-This library focuses on the closely related Continuous Ranked Probability
-Score (CRPS) and Brier Score. We like these scores because they are both
-interpretable (e.g., CRPS is a generalization of mean absolute error) and
-easily calculated from a finite number of samples of a probability
-distribution.
-
 Contents:
+    This library focuses on the closely related Continuous Ranked Probability
+    Score (CRPS) and Brier Score. We like these scores because they are both
+    interpretable (e.g., CRPS is a generalization of mean absolute error) and
+    easily calculated from a finite number of samples of a probability
+    distribution.
+
     * Continuous Ranked Probability Score (CRPS):
 
       - for an ensemble forecast: ``crps_ensemble``

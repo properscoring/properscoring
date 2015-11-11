@@ -109,9 +109,9 @@ def threshold_brier_score(observations, forecasts, threshold, issorted=False,
     function of measurement values.
 
     The Numba accelerated version of this function is much faster for
-    calculating many thresholds simultaneously: it runs in time O(N * (E + T)),
-    where N is the number of observations, E is the ensemble size and T is the
-    number of thresholds.
+    calculating many thresholds simultaneously: it runs in time
+    O(N * (E * log(E) + T)), where N is the number of observations, E is the
+    ensemble size and T is the number of thresholds.
 
     The non-Numba accelerated version requires time and space O(N * E * T).
 
