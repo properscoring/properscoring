@@ -22,7 +22,7 @@ setup(name='properscoring',
       long_description=(open('README.rst').read()
                         if os.path.exists('README.rst')
                         else ''),
-      version='0.1.dev',
+      version='0.1',
       license='Apache',
       classifiers=CLASSIFIERS,
       author='The Climate Corporation',
