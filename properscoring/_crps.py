@@ -59,6 +59,9 @@ def crps_gaussian(x, mu, sig, grad=False):
         a numpy array [grad_wrt_mu, grad_wrt_sig].  The
         same broadcasting rules apply.
     """
+    x = np.asarray(x)
+    mu = np.asarray(mu)
+    sig = np.asarray(sig)
     # standadized x
     sx = (x - mu) / sig
     # some precomputations to speed up the gradient

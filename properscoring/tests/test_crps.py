@@ -77,6 +77,11 @@ class TestDistributionBasedCRPS(unittest.TestCase):
         actual = crps_gaussian(self.obs, self.mu, self.sig)
         np.testing.assert_allclose(actual, self.expected, rtol=1e-4)
 
+    def test_crps_gaussian_broadcast(self):
+        expected = crps_gaussian(np.array([0, 1, 2]), mu=0, sig=1)
+        actual = crps_gaussian([0, 1, 2], mu=[0], sig=1)
+        np.testing.assert_allclose(actual, expected)
+
     def test_grad(self):
         from scipy import optimize
         f = lambda z: crps_gaussian(self.obs[0, 0], z[0], z[1], grad=False)
