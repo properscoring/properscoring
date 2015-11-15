@@ -304,7 +304,6 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
     Jochen Broecker. Chapter 7 in Forecast Verification: A Practitioner's Guide
         in Atmospheric Science. John Wiley & Sons, Ltd, Chichester, UK, 2nd
         edition, 2012.
-        https://drive.google.com/a/climate.com/file/d/0B8AfRcot4nsIYmc3alpTeTZpLWc
     Tilmann Gneiting and Adrian E. Raftery. Strictly proper scoring rules,
         prediction, and estimation, 2005. University of Washington Department of
         Statistics Technical Report no. 463R.
