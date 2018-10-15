@@ -4,6 +4,8 @@ properscoring
 .. image:: https://travis-ci.org/TheClimateCorporation/properscoring.svg?branch=master
     :target: https://travis-ci.org/TheClimateCorporation/properscoring
 
+.. highlight:: python
+
 `Proper scoring rules`_ for evaluating probabilistic forecasts in Python.
 Evaluation methods that are "strictly proper" cannot be artificially improved
 through hedging, which makes them fair methods for accessing the accuracy of
