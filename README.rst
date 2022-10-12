@@ -32,7 +32,7 @@ these scores because they are both interpretable (e.g., CRPS is a
 generalization of mean absolute error) and easily calculated from a finite
 number of samples of a probability distribution.
 
-.. _Continuous Ranked Probability Score: http://www.eumetcal.org/resources/ukmeteocal/verification/www/english/msg/ver_prob_forec/uos3b/uos3b_ko1.htm
+.. _Continuous Ranked Probability Score: https://web.archive.org/web/20161102094610/http://www.eumetcal.org/resources/ukmeteocal/verification/www/english/msg/ver_prob_forec/uos3b/uos3b_ko1.htm
 .. _Brier score: https://en.wikipedia.org/wiki/Brier_score
 
 We will illustrate how to calculate CRPS against a forecast given by a
