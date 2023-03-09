@@ -184,7 +184,7 @@ def crps_quadrature(x, cdf_or_dist, xmin=None, xmax=None, tol=1e-6):
     return _crps_cdf(x, cdf_or_dist, xmin, xmax, tol)
 
 
-def _crps_ensemble_vectorized(observations, forecasts, weights=1):
+def _crps_ensemble_vectorized(observations, forecasts, weights=1, fair=True):
     """
     An alternative but simpler implementation of CRPS for testing purposes
 
@@ -198,6 +198,10 @@ def _crps_ensemble_vectorized(observations, forecasts, weights=1):
 
     Hence it has runtime O(n^2) instead of O(n log(n)) where n is the number of
     ensemble members.
+    
+    The 'fair' option implements the unbiased CRPS computation introduced by Ferro
+    et al., 2008. It simply consists in renormalizing the negative term of CRPS
+    when evaluating its empirical mean.
 
     Reference
     ---------
@@ -205,6 +209,8 @@ def _crps_ensemble_vectorized(observations, forecasts, weights=1):
         prediction, and estimation, 2005. University of Washington Department of
         Statistics Technical Report no. 463R.
         https://www.stat.washington.edu/research/reports/2004/tr463R.pdf
+        
+    
     """
     observations = np.asarray(observations)
     forecasts = np.asarray(forecasts)
@@ -226,7 +232,15 @@ def _crps_ensemble_vectorized(observations, forecasts, weights=1):
         weights_matrix = (np.expand_dims(weights, -1) *
                           np.expand_dims(weights, -2))
         with suppress_warnings('Mean of empty slice'):
-            score += -0.5 * np.nanmean(weights_matrix * abs(forecasts_diff),
+            
+            if not fair : 
+                coeff = 0.5
+            else :
+                n = forecasts.shape[-1]
+                assert n>1
+                coeff = 0.5 * (n / (n-1))
+            
+            score += - coeff * np.nanmean(weights_matrix * abs(forecasts_diff),
                                        axis=(-2, -1))
         return score
     elif observations.ndim == forecasts.ndim:
@@ -236,13 +250,14 @@ def _crps_ensemble_vectorized(observations, forecasts, weights=1):
 
 
 try:
-    from ._gufuncs import _crps_ensemble_gufunc as _crps_ensemble_core
+    from ._gufuncs import _CRPS_gufunc_wrapper as _crps_ensemble_core
+    _framework = 'numba'
 except ImportError:
-    _crps_ensemble_core = _crps_ensemble_vectorized
+    _framework = 'numpy'
 
 
 def crps_ensemble(observations, forecasts, weights=None, issorted=False,
-                  axis=-1):
+                  axis=-1, fair=True, framework = None):
     """
     Calculate the continuous ranked probability score (CRPS) for a set of
     explicit forecast realizations.
@@ -270,6 +285,9 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
 
     The non-Numba accelerated version much slower for large ensembles: it
     requires both time and space O(N * E ** 2).
+    
+    If option 'fair'is active, the estimator of the non-numba operation will be
+    computed using the unbiased estimation of CRPS (aka 'Fair CRPS').
 
     Parameters
     ----------
@@ -293,6 +311,13 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
     axis : int, optional
         Axis in forecasts and weights which corresponds to different ensemble
         members, along which to calculate CRPS.
+    fair : bool, optional
+        Whether to use the unbiased estimation of CRPS. 
+        Default to True.
+    framework : string, optional
+        default to None, option is 'vectorized', which uses the 
+        '_crps_ensemble_vectorized' function. Note that this is the case by
+        default if numba has not been imported
 
     Returns
     -------
@@ -342,5 +367,8 @@ def crps_ensemble(observations, forecasts, weights=None, issorted=False,
 
     if weights is None:
         weights = np.ones_like(forecasts)
-
-    return _crps_ensemble_core(observations, forecasts, weights)
+    
+    if framework=='vectorized' or _framework=='numpy':
+        return _crps_ensemble_vectorized(observations, forecasts, weights, fair=fair)
+    
+    return _crps_ensemble_core(fair)(observations, forecasts, weights)
