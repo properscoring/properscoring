@@ -2,6 +2,20 @@ import numpy as np
 from numba import guvectorize
 
 
+class _CRPS_gufunc_wrapper():
+    def __init__(self, fair) :
+        self.fair = fair
+    
+    def __call__(self,observation, forecasts, weights) :
+        
+        if self.fair :
+            
+            return _crps_ensemble_gufunc_fair(observation, forecasts, weights)
+        
+        else :
+            
+            return _crps_ensemble_gufunc(observation, forecasts, weights)
+
 @guvectorize(["void(float64[:], float64[:], float64[:], float64[:])"],
              "(),(n),(n)->()", nopython=True)
 def _crps_ensemble_gufunc(observation, forecasts, weights, result):
@@ -30,7 +44,7 @@ def _crps_ensemble_gufunc(observation, forecasts, weights, result):
     forecast_cdf = 0
     prev_forecast = 0
     integral = 0
-
+    
     for n, forecast in enumerate(forecasts):
         if np.isnan(forecast):
             # NumPy sorts NaN to the end
@@ -47,6 +61,62 @@ def _crps_ensemble_gufunc(observation, forecasts, weights, result):
         else:
             integral += ((forecast - prev_forecast)
                          * (forecast_cdf - obs_cdf) ** 2)
+
+        forecast_cdf += weights[n] / total_weight
+        prev_forecast = forecast
+
+    if obs_cdf == 0:
+        # forecast can be undefined here if the loop body is never executed
+        # (because forecasts have size 0), but don't worry about that because
+        # we want to raise an error in that case, anyways
+        integral += obs - forecast
+
+    result[0] = integral
+    
+@guvectorize(["void(float64[:], float64[:], float64[:], float64[:])"],
+             "(),(n),(n)->()", nopython=True)
+def _crps_ensemble_gufunc_fair(observation, forecasts, weights, result):
+    # beware: forecasts are assumed sorted in NumPy's sort order
+
+    # we index the 0th element to get the scalar value from this 0d array:
+    # http://numba.pydata.org/numba-doc/0.18.2/user/vectorize.html#the-guvectorize-decorator
+    obs = observation[0]
+
+    if np.isnan(obs):
+        result[0] = np.nan
+        return
+
+    total_weight = 0.0
+    for n, weight in enumerate(weights):
+        if np.isnan(forecasts[n]):
+            # NumPy sorts NaN to the end
+            break
+        if not weight >= 0:
+            # this catches NaN weights
+            result[0] = np.nan
+            return
+        total_weight += weight
+
+    forecast_cdf = 0
+    prev_forecast = 0
+    integral = 0
+    obs_cdf = 0
+    
+    for n, forecast in enumerate(forecasts):
+        if np.isnan(forecast):
+            # NumPy sorts NaN to the end
+            if n == 0:
+                integral = np.nan
+            # reset for the sake of the conditional below
+            forecast = prev_forecast
+            break
+        
+        if obs_cdf==0 and forecast > obs :
+            obs_cdf = 1
+        
+        integral += (weights[n] / total_weight) * np.abs(forecast - obs)
+        integral += (weights[n] / total_weight) * forecast
+        integral -= 2 * (weights[n] / (total_weight - weights[n]) )* forecast * forecast_cdf
 
         forecast_cdf += weights[n] / total_weight
         prev_forecast = forecast
